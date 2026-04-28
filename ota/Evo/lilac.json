@@ -1,13 +1,16 @@
 {
   "response": [
     {
-      "datetime": 1777354156,
+      "timestamp": 1777359037,
       "filename": "EvolutionX-15.0-20260427-lilac-10.16-Unofficial.zip",
-      "id": "724464f061fdd536837162e5932f6f3fb32c647459e35f5ede310f7099c01c33",
-      "romtype": "unofficial",
+      "md5": "07a711fbe39c8bbda7e84fee17f70cb8",
       "size": 2508887083,
-      "url": "https://sourceforge.net/projects/justin-android-release/files/Releases/XZ1C/EvolutionX/EvolutionX-15.0-20260427-lilac-10.16-Unofficial/EvolutionX-15.0-20260427-lilac-10.16-Unofficial.zip/download",
-      "version": "15.0"
+      "download": "https://sourceforge.net/projects/justin-android-release/files/Releases/XZ1C/EvolutionX/EvolutionX-15.0-20260427-lilac-10.16-Unofficial/EvolutionX-15.0-20260427-lilac-10.16-Unofficial.zip/download",
+      "version": "15.0",
+      "maintainer": "justinlin099",
+      "forum": "https://xdaforums.com",
+      "firmware": "",
+      "paypal": ""
     }
   ]
 }
