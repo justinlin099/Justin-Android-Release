@@ -1,13 +1,1 @@
-{
-  "response": [
-    {
-      "datetime": 1777294366,
-      "filename": "lineage-22.2-20260427-UNOFFICIAL-lilac.zip",
-      "id": "8fbd99b91aa9a08cc1c767c2c393779a783631a55edaefc54055d9ee68887827",
-      "romtype": "unofficial",
-      "size": 1042976078,
-      "url": "https://sourceforge.net/projects/justin-android-release/files/Releases/XZ1C/LineageOS/lineage-22.2-20260427-UNOFFICIAL-lilac/lineage-22.2-20260427-UNOFFICIAL-lilac.zip/download",
-      "version": "22.2"
-    }
-  ]
-}
+{ "response": [ { "datetime": 1777870142, "filename": "lineage-22.2-20260504-UNOFFICIAL-lilac.zip", "id": "079b5f917113a26e5b92fc025d1d8a0fccb59dea2747555aacaa719fa496985d", "romtype": "unofficial", "size": 1042999937, "url": "https://sourceforge.net/projects/justin-android-release/files/Releases/XZ1C/LineageOS/lineage-22.2-20260504-UNOFFICIAL-lilac/lineage-22.2-20260504-UNOFFICIAL-lilac.zip/download", "version": "22.2" } ] }
