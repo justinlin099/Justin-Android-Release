@@ -1,0 +1,10 @@
+diff --git a/fsgen/Android.bp b/fsgen/Android.bp
+index 365d9540f..9ff7d8953 100644
+--- a/fsgen/Android.bp
++++ b/fsgen/Android.bp
+@@ -30,4 +30,5 @@ bootstrap_go_package {
+ 
+ soong_filesystem_creator {
+     name: "soong_filesystem_creator",
++    enabled: false,
+ }

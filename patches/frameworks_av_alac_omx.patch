@@ -1,0 +1,330 @@
+diff --git a/media/libstagefright/ACodec.cpp b/media/libstagefright/ACodec.cpp
+index e06efac6df..fd97aaea47 100644
+--- a/media/libstagefright/ACodec.cpp
++++ b/media/libstagefright/ACodec.cpp
+@@ -38,7 +38,8 @@
+ #include <media/stagefright/foundation/ADebug.h>
+ #include <media/stagefright/foundation/AMessage.h>
+ #include <media/stagefright/foundation/AUtils.h>
+-
++#include <media/stagefright/foundation/ByteUtils.h>
++#include <arpa/inet.h>
+ #include <media/stagefright/BufferProducerWrapper.h>
+ #include <media/stagefright/MediaCodec.h>
+ #include <media/stagefright/MediaCodecConstants.h>
+@@ -69,6 +70,27 @@
+ 
+ #include <server_configurable_flags/get_flags.h>
+ 
++#define QOMX_IndexParamAudioAlac (OMX_INDEXTYPE)0x7F200008
++
++typedef struct QOMX_AUDIO_PARAM_ALACTYPE {
++    OMX_U32 nSize;
++    OMX_VERSIONTYPE nVersion;
++    OMX_U32 nPortIndex;
++    OMX_BOOL bBytesStreamMode;
++    OMX_U32 nFrameLength;
++    OMX_U8 nCompatibleVersion;
++    OMX_U8 nBitDepth;
++    OMX_U8 nPb;
++    OMX_U8 nMb;
++    OMX_U8 nKb;
++    OMX_U8 nChannels;
++    OMX_U16 nMaxRun;
++    OMX_U32 nMaxFrameBytes;
++    OMX_U32 nAvgBitRate;
++    OMX_U32 nSampleRate;
++    OMX_U32 nChannelLayoutTag;
++} QOMX_AUDIO_PARAM_ALACTYPE;
++
+ namespace android {
+ 
+ typedef hardware::media::omx::V1_0::IGraphicBufferSource HGraphicBufferSource;
+@@ -2397,6 +2419,14 @@ status_t ACodec::configureCodec(
+         } else {
+             err = setupAC4Codec(encoder, numChannels, sampleRate);
+         }
++    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_ALAC)) {
++        int32_t numChannels, sampleRate;
++        if (!msg->findInt32("channel-count", &numChannels)
++                || !msg->findInt32("sample-rate", &sampleRate)) {
++            err = INVALID_OPERATION;
++        } else {
++            err = setupAlacCodec(encoder, numChannels, sampleRate, pcmEncoding);
++        }
+     }
+ 
+     if (err != OK) {
+@@ -3277,6 +3307,95 @@ status_t ACodec::setupOpusCodec(bool encoder, int32_t sampleRate, int32_t numCha
+     return err;
+ }
+ 
++status_t ACodec::setupAlacCodec(bool encoder, int32_t numChannels, int32_t sampleRate, AudioEncoding encoding) {
++    if (encoder) {
++        ALOGW("ALAC encoding is not supported.");
++        return INVALID_OPERATION;
++    }
++
++    // Default target encoding
++    AudioEncoding targetEncoding = encoding;
++
++    QOMX_AUDIO_PARAM_ALACTYPE def;
++    InitOMXParams(&def);
++    def.nPortIndex = kPortIndexInput;
++    def.bBytesStreamMode = OMX_FALSE;
++
++    sp<ABuffer> csd0;
++    if (mConfigFormat->findBuffer("csd-0", &csd0) && csd0->size() >= 24) {
++        uint8_t *data = csd0->data();
++        
++        // Manual Big-Endian to Host-Endian parsing
++        uint32_t frameLength = (uint32_t)data[0] << 24 | (uint32_t)data[1] << 16 | (uint32_t)data[2] << 8 | (uint32_t)data[3];
++        uint16_t maxRun = (uint16_t)data[10] << 8 | (uint16_t)data[11];
++        uint32_t maxFrameBytes = (uint32_t)data[12] << 24 | (uint32_t)data[13] << 16 | (uint32_t)data[14] << 8 | (uint32_t)data[15];
++        uint32_t avgBitRate = (uint32_t)data[16] << 24 | (uint32_t)data[17] << 16 | (uint32_t)data[18] << 8 | (uint32_t)data[19];
++        uint32_t sampleRate = (uint32_t)data[20] << 24 | (uint32_t)data[21] << 16 | (uint32_t)data[22] << 8 | (uint32_t)data[23];
++
++        // DECISION: Only use 32-bit path if the file is actually 24-bit.
++        // This prevents the 2x speed issue on 16-bit songs.
++        if (data[5] == 24) {
++            targetEncoding = kAudioEncodingPcm32bit;
++            ALOGI("ALAC_DIAG: 24-bit file detected. Using 32-bit output path.");
++        } else {
++            targetEncoding = kAudioEncodingPcm16bit;
++            ALOGI("ALAC_DIAG: 16-bit file detected. Using 16-bit output path.");
++        }
++
++        // Rewrite multi-byte fields as LITTLE ENDIAN to satisfy the buggy decoder
++        data[0] = frameLength & 0xFF;
++        data[1] = (frameLength >> 8) & 0xFF;
++        data[2] = (frameLength >> 16) & 0xFF;
++        data[3] = (frameLength >> 24) & 0xFF;
++        data[10] = maxRun & 0xFF;
++        data[11] = (maxRun >> 8) & 0xFF;
++        data[12] = maxFrameBytes & 0xFF;
++        data[13] = (maxFrameBytes >> 8) & 0xFF;
++        data[14] = (maxFrameBytes >> 16) & 0xFF;
++        data[15] = (maxFrameBytes >> 24) & 0xFF;
++        data[16] = avgBitRate & 0xFF;
++        data[17] = (avgBitRate >> 8) & 0xFF;
++        data[18] = (avgBitRate >> 16) & 0xFF;
++        data[19] = (avgBitRate >> 24) & 0xFF;
++        data[20] = sampleRate & 0xFF;
++        data[21] = (sampleRate >> 8) & 0xFF;
++        data[22] = (sampleRate >> 16) & 0xFF;
++        data[23] = (sampleRate >> 24) & 0xFF;
++
++        def.nFrameLength = frameLength;
++        def.nCompatibleVersion = data[4];
++        def.nBitDepth = data[5];
++        def.nPb = data[6];
++        def.nMb = data[7];
++        def.nKb = data[8];
++        def.nChannels = data[9];
++        def.nMaxRun = maxRun;
++        def.nMaxFrameBytes = maxFrameBytes;
++        def.nAvgBitRate = avgBitRate;
++        def.nSampleRate = sampleRate;
++    } else {
++        def.nChannels = (OMX_U8)numChannels;
++        def.nSampleRate = (OMX_U32)sampleRate;
++        def.nBitDepth = 16;
++        def.nFrameLength = 4096;
++        targetEncoding = kAudioEncodingPcm16bit;
++    }
++
++    status_t err = setupRawAudioFormat(kPortIndexOutput, sampleRate, numChannels, targetEncoding);
++    if (err != OK) {
++        return err;
++    }
++
++    def.nChannelLayoutTag = 0;
++    err = mOMXNode->setParameter(QOMX_IndexParamAudioAlac, &def, sizeof(def));
++    if (err != OK) {
++        ALOGE("setupAlacCodec(): Error %d setting QOMX_IndexParamAudioAlac parameter", err);
++        return err;
++    }
++
++    return selectAudioPortFormat(kPortIndexInput, OMX_AUDIO_CodingALAC);
++}
++
+ status_t ACodec::setupFlacCodec(
+         bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel,
+         AudioEncoding encoding) {
+@@ -3353,12 +3472,23 @@ status_t ACodec::setupRawAudioFormat(
+             pcmParams.eNumData = OMX_NumericalDataSigned;
+             pcmParams.nBitPerSample = 16;
+             break;
++        case kAudioEncodingPcm24bitPacked:
++            pcmParams.eNumData = OMX_NumericalDataSigned;
++            pcmParams.nBitPerSample = 24;
++            break;
++        case kAudioEncodingPcm32bit:
++            pcmParams.eNumData = OMX_NumericalDataSigned;
++            pcmParams.nBitPerSample = 32;
++            break;
+         default:
+             return BAD_VALUE;
+     }
+     pcmParams.bInterleaved = OMX_TRUE;
+     pcmParams.nSamplingRate = sampleRate;
+     pcmParams.ePCMMode = OMX_AUDIO_PCMModeLinear;
++    // FIX: Force the decoder to output Little-Endian PCM. If left default (0/Big-Endian), 
++    // it will cause severe static noise when played by AudioFlinger.
++    pcmParams.eEndian = OMX_EndianLittle;
+ 
+     if (getOMXChannelMapping(numChannels, pcmParams.eChannelMapping) != OK) {
+         ALOGE("%s: incorrect numChannels: %d", __func__, numChannels);
+@@ -5441,35 +5571,38 @@ status_t ACodec::getPortFormat(OMX_U32 portIndex, sp<AMessage> &notify) {
+                         return err;
+                     }
+ 
+-                    if (params.nChannels <= 0
+-                            || (params.nChannels != 1 && !params.bInterleaved)
+-                            || params.ePCMMode != OMX_AUDIO_PCMModeLinear) {
+-                        ALOGE("unsupported PCM port: %u channels%s, %u-bit",
+-                                params.nChannels,
+-                                params.bInterleaved ? " interleaved" : "",
+-                                params.nBitPerSample);
+-                        return FAILED_TRANSACTION;
+-                    }
++                    ALOGI("ALAC_DIAG: [ALAC_FIX_FINAL_SUCCESS] PCM Port %u: %u channels, %u-bit, eNumData 0x%08x",
++                          portIndex, params.nChannels, params.nBitPerSample, params.eNumData);
+ 
+                     notify->setString("mime", MEDIA_MIMETYPE_AUDIO_RAW);
+                     notify->setInt32("channel-count", params.nChannels);
+                     notify->setInt32("sample-rate", params.nSamplingRate);
+ 
+                     AudioEncoding encoding = kAudioEncodingPcm16bit;
+-                    if (params.eNumData == OMX_NumericalDataUnsigned
+-                            && params.nBitPerSample == 8u) {
+-                        encoding = kAudioEncodingPcm8bit;
+-                    } else if (params.eNumData == OMX_NumericalDataFloat
+-                            && params.nBitPerSample == 32u) {
+-                        encoding = kAudioEncodingPcmFloat;
+-                    } else if (params.nBitPerSample != 16u
+-                            || params.eNumData != OMX_NumericalDataSigned) {
+-                        ALOGE("unsupported PCM port: %s(%d), %s(%d) mode ",
+-                                asString(params.eNumData), params.eNumData,
+-                                asString(params.ePCMMode), params.ePCMMode);
+-                        return FAILED_TRANSACTION;
++                    // REVERT: The 8_24bit mapping caused AudioFlinger to reject the track (Lineage player skipped).
++                    // DYNAMIC: Read CSD to decide if we need the expansion workaround.
++                    sp<ABuffer> csd0;
++                    bool shouldExpand = false;
++                    if (mConfigFormat->findBuffer("csd-0", &csd0) && csd0->size() >= 24) {
++                        // We check the bit-depth directly from the (potentially mutated) CSD
++                        if (csd0->data()[5] == 24) {
++                            shouldExpand = true;
++                        }
+                     }
++
++                    if (shouldExpand || params.nBitPerSample == 32u) {
++                        encoding = kAudioEncodingPcm32bit;
++                        if (shouldExpand) {
++                            notify->setInt32("x-alac-expand", 1);
++                        }
++                        ALOGI("ALAC_DIAG: [ALAC_FIX_V25] 32-bit Path. Expand: %d", shouldExpand);
++                    } else {
++                        encoding = kAudioEncodingPcm16bit;
++                        ALOGI("ALAC_DIAG: [ALAC_FIX_V25] 16-bit Path. No expansion.");
++                    }
++
+                     notify->setInt32("pcm-encoding", encoding);
++                    ALOGI("ALAC_DIAG: [ALAC_FIX_V25] Final Set pcm-encoding to %d for %u-bit port", encoding, params.nBitPerSample);
+ 
+                     if (mChannelMaskPresent) {
+                         notify->setInt32("channel-mask", mChannelMask);
+@@ -5640,6 +5773,27 @@ status_t ACodec::getPortFormat(OMX_U32 portIndex, sp<AMessage> &notify) {
+                     break;
+                 }
+ 
++                case OMX_AUDIO_CodingALAC:
++                {
++                    QOMX_AUDIO_PARAM_ALACTYPE params;
++                    InitOMXParams(&params);
++                    params.nPortIndex = portIndex;
++
++                    err = mOMXNode->getParameter(
++                            QOMX_IndexParamAudioAlac, &params, sizeof(params));
++                    if (err != OK) {
++                        return err;
++                    }
++
++                    notify->setString("mime", MEDIA_MIMETYPE_AUDIO_ALAC);
++                    notify->setInt32("channel-count", params.nChannels);
++                    notify->setInt32("sample-rate", params.nSampleRate);
++                    if (params.nBitDepth == 24) {
++                        notify->setInt32("pcm-encoding", kAudioEncodingPcm24bitPacked);
++                    }
++                    break;
++                }
++
+                 case OMX_AUDIO_CodingAndroidAC4:
+                 {
+                     OMX_AUDIO_PARAM_ANDROID_AC4TYPE params;
+@@ -6714,6 +6868,39 @@ bool ACodec::BaseState::onOMXFillBufferDone(
+                 buffer->setRange(rangeOffset, rangeLength);
+             } else {
+                 info->mCodecData->setRange(rangeOffset, rangeLength);
++            }
++
++            // --- WORKAROUND FOR QUALCOMM ALAC DECODER 24-BIT PACKED BUG ---
++            if (mCodec->mComponentName == "OMX.qti.audio.decoder.alac.sw" && rangeLength >= 3) {
++                int32_t expand = 0;
++                // Only expand if the getPortFormat detection confirmed it's the 24-bit packed format
++                if (mCodec->mOutputFormat->findInt32("x-alac-expand", &expand) && expand == 1) {
++                    uint8_t *data = (buffer->base() == info->mCodecData->base()) ? buffer->data() : info->mCodecData->data();
++                    size_t numSamples = rangeLength / 3;
++                    
++                    // Expand 24-bit packed to 32-bit Q31 in-place.
++                    if (buffer->capacity() >= numSamples * 4) {
++                        for (ssize_t i = numSamples - 1; i >= 0; --i) {
++                            uint8_t b0 = data[i * 3 + 0];
++                            uint8_t b1 = data[i * 3 + 1];
++                            uint8_t b2 = data[i * 3 + 2];
++                            data[i * 4 + 0] = 0;
++                            data[i * 4 + 1] = b0;
++                            data[i * 4 + 2] = b1;
++                            data[i * 4 + 3] = b2;
++                        }
++                        rangeLength = numSamples * 4;
++                    }
++                }
++
++                buffer->setRange(rangeOffset, rangeLength);
++                if (buffer->base() != info->mCodecData->base()) {
++                    info->mCodecData->setRange(rangeOffset, rangeLength);
++                }
++            }
++            // --------------------------------------------------------------
++
++            if (buffer->base() != info->mCodecData->base()) {
+                 // in this case we know that mConverter is not null
+                 status_t err = mCodec->mConverter[kPortIndexOutput]->convert(
+                         info->mCodecData, buffer);
+diff --git a/media/libstagefright/include/media/stagefright/ACodec.h b/media/libstagefright/include/media/stagefright/ACodec.h
+index a4d82ab2b0..f97e36bcfc 100644
+--- a/media/libstagefright/include/media/stagefright/ACodec.h
++++ b/media/libstagefright/include/media/stagefright/ACodec.h
+@@ -528,6 +528,7 @@ private:
+     status_t setupG711Codec(bool encoder, int32_t sampleRate, int32_t numChannels);
+ 
+     status_t setupOpusCodec(bool encoder, int32_t sampleRate, int32_t numChannels);
++    status_t setupAlacCodec(bool encoder, int32_t numChannels, int32_t sampleRate, AudioEncoding encoding);
+     status_t setupFlacCodec(
+             bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel,
+             AudioEncoding encoding);
+diff --git a/media/libstagefright/omx/OMXUtils.cpp b/media/libstagefright/omx/OMXUtils.cpp
+index 49b2dec80e..f51b75b554 100644
+--- a/media/libstagefright/omx/OMXUtils.cpp
++++ b/media/libstagefright/omx/OMXUtils.cpp
+@@ -168,6 +168,8 @@ const char *GetComponentRole(bool isEncoder, const char *mime) {
+             "audio_decoder.eac3", "audio_encoder.eac3" },
+         { MEDIA_MIMETYPE_AUDIO_EAC3_JOC,
+             "audio_decoder.eac3_joc", "audio_encoder.eac3_joc" },
++        { MEDIA_MIMETYPE_AUDIO_ALAC,
++            "audio_decoder.alac", "audio_encoder.alac" },
+         { MEDIA_MIMETYPE_AUDIO_AC4,
+             "audio_decoder.ac4", "audio_encoder.ac4" },
+         { MEDIA_MIMETYPE_IMAGE_ANDROID_HEIC,
