@@ -2,6 +2,8 @@
 
 ROM_TYPE="EvolutionX"
 DATE_STR=$(date +%Y%m%d)
+TARGET_RELEASE_CONFIG="bp1a"
+TARGET_BUILD_VARIANT="userdebug"
 
 # 定義目標列表：格式為 "TARGET_PRODUCT:DEVICE_NAME"
 TARGETS=("lineage_lilac:lilac" "lineage_lilac_dcm:lilac")
@@ -76,9 +78,9 @@ run_build() {
     local ota_url="${OTA_URL_BASE}/${ota_json_name}"
     [ -f "$UPDATER_STRINGS" ] && cp "$UPDATER_STRINGS" "updater_strings.xml.bak" && sed -i "s|$UPDATER_DEFAULT_URL|$ota_url|g" "$UPDATER_STRINGS"
 
-    # 使用 breakfast 準備機型 (它會自動找 lineage_ 開頭的產品)
-    breakfast "$ota_name" || {
-        echo "!!! ERROR: breakfast failed for $ota_name. Aborting build."
+    # Use the full lunch combo so build/make does not need local envsetup hacks.
+    breakfast "${product}-${TARGET_RELEASE_CONFIG}-${TARGET_BUILD_VARIANT}" || {
+        echo "!!! ERROR: breakfast failed for ${product}-${TARGET_RELEASE_CONFIG}-${TARGET_BUILD_VARIANT}. Aborting build."
         exit 1
     }
     
