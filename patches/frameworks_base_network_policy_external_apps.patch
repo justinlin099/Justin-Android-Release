@@ -1,0 +1,65 @@
+From c730250b580bcd39067cbaeb43ddaeb09c0d01a5 Mon Sep 17 00:00:00 2001
+From: justinlin099 <justin.lin099@gmail.com>
+Date: Fri, 22 May 2026 21:15:19 +0800
+Subject: [PATCH] NPMS: Update firewall rules when external apps become
+ available
+
+When using Adoptable Storage, apps installed on the SD card are not
+available during the initial boot phase when NPMS first computes
+firewall rules.
+
+Because NPMS was not listening for ACTION_EXTERNAL_APPLICATIONS_AVAILABLE,
+it never re-evaluated rules for these apps when they were eventually
+mounted. This caused apps on external storage to be incorrectly blocked
+when Restricted Networking Mode was enabled.
+
+This patch adds a receiver for ACTION_EXTERNAL_APPLICATIONS_AVAILABLE
+to ensure that firewall rules are correctly synchronized for apps on
+external storage as soon as they become available.
+
+Change-Id: Ibe7b55f544060ffb4ac90c1abd27bbf3e0ffb1e7
+Signed-off-by: justinlin099 <justin.lin099@gmail.com>
+---
+ .../net/NetworkPolicyManagerService.java      | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/services/core/java/com/android/server/net/NetworkPolicyManagerService.java b/services/core/java/com/android/server/net/NetworkPolicyManagerService.java
+index 2d02b698c194..b6a02de24ae7 100644
+--- a/services/core/java/com/android/server/net/NetworkPolicyManagerService.java
++++ b/services/core/java/com/android/server/net/NetworkPolicyManagerService.java
+@@ -1189,6 +1189,11 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
+             packageFilter.addDataScheme("package");
+             mContext.registerReceiverForAllUsers(mPackageReceiver, packageFilter, null, mHandler);
+ 
++            // listen for external storage apps to become available
++            final IntentFilter sdFilter = new IntentFilter();
++            sdFilter.addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE);
++            mContext.registerReceiverForAllUsers(mPackageReceiver, sdFilter, null, mHandler);
++
+             // listen for UID changes to update policy
+             mContext.registerReceiverForAllUsers(
+                     mUidRemovedReceiver, new IntentFilter(ACTION_UID_REMOVED), null, mHandler);
+@@ -1479,6 +1484,20 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
+             // on background handler thread, and PACKAGE_ADDED is protected
+ 
+             final String action = intent.getAction();
++
++            if (Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE.equals(action)) {
++                int[] uids = intent.getIntArrayExtra(Intent.EXTRA_CHANGED_UID_LIST);
++                if (uids != null) {
++                    synchronized (mUidRulesFirstLock) {
++                        for (int changedUid : uids) {
++                            mInternetPermissionMap.delete(changedUid);
++                            updateRestrictionRulesForUidUL(changedUid);
++                        }
++                    }
++                }
++                return;
++            }
++
+             final int uid = intent.getIntExtra(EXTRA_UID, -1);
+             if (uid == -1) return;
+ 
+-- 
+2.43.0
+

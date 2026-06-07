@@ -13,6 +13,7 @@ Run these from the Android source root after syncing LineageOS sources:
 
 ```bash
 git -C build/soong apply /path/to/patches/build_soong_disable_filesystem_creator.patch
+git -C frameworks/base am /path/to/patches/frameworks_base_network_policy_external_apps.patch
 git -C frameworks/av apply /path/to/patches/frameworks_av_alac_omx.patch
 git -C frameworks/native apply /path/to/patches/frameworks_native_omx_audio_alac.patch
 ```
