@@ -1,0 +1,12 @@
+diff --git a/Android.bp b/Android.bp
+new file mode 100644
+index 000000000..16004c91f
+--- /dev/null
++++ b/Android.bp
+@@ -0,0 +1,6 @@
++soong_namespace {
++    imports: [
++        "device/sony/yoshino-common/hardware/qcom-caf",
++    ],
++}
++

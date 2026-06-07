@@ -1,0 +1,52 @@
+diff --git a/mm-core/src/msm8998/registry_table.c b/mm-core/src/msm8998/registry_table.c
+index 28da9a4a1..f783d5878 100644
+--- a/mm-core/src/msm8998/registry_table.c
++++ b/mm-core/src/msm8998/registry_table.c
+@@ -39,6 +39,21 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ omx_core_cb_type core[] =
+ {
++  {
++    "OMX.qti.audio.decoder.alac.sw",
++    NULL,
++    {
++      NULL,
++      NULL,
++      NULL,
++      NULL
++    },
++    NULL,
++    "libOmxAlacDecSw.so",
++    {
++      "audio_decoder.alac"
++    }
++  },
+   {
+     "OMX.qcom.video.decoder.avc",
+     NULL,   // Create instance function
+diff --git a/mm-core/src/msm8998/registry_table_android.c b/mm-core/src/msm8998/registry_table_android.c
+index 6ab65a5d9..f6506ebf9 100644
+--- a/mm-core/src/msm8998/registry_table_android.c
++++ b/mm-core/src/msm8998/registry_table_android.c
+@@ -151,6 +151,21 @@ omx_core_cb_type core[] =
+       "video_decoder.vc1"
+     }
+   },
++  {
++    "OMX.qti.audio.decoder.alac.sw",
++    NULL,
++    {
++      NULL,
++      NULL,
++      NULL,
++      NULL
++    },
++    NULL,
++    "libOmxAlacDecSw.so",
++    {
++      "audio_decoder.alac"
++    }
++  },
+   {
+     "OMX.qcom.video.decoder.hevc.secure",
+     NULL,   // Create instance function

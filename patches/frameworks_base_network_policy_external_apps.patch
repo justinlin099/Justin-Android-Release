@@ -1,0 +1,37 @@
+diff --git a/services/core/java/com/android/server/net/NetworkPolicyManagerService.java b/services/core/java/com/android/server/net/NetworkPolicyManagerService.java
+index 2d02b698c194..b6a02de24ae7 100644
+--- a/services/core/java/com/android/server/net/NetworkPolicyManagerService.java
++++ b/services/core/java/com/android/server/net/NetworkPolicyManagerService.java
+@@ -1189,6 +1189,11 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
+             packageFilter.addDataScheme("package");
+             mContext.registerReceiverForAllUsers(mPackageReceiver, packageFilter, null, mHandler);
+ 
++            // listen for external storage apps to become available
++            final IntentFilter sdFilter = new IntentFilter();
++            sdFilter.addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE);
++            mContext.registerReceiverForAllUsers(mPackageReceiver, sdFilter, null, mHandler);
++
+             // listen for UID changes to update policy
+             mContext.registerReceiverForAllUsers(
+                     mUidRemovedReceiver, new IntentFilter(ACTION_UID_REMOVED), null, mHandler);
+@@ -1479,6 +1484,20 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
+             // on background handler thread, and PACKAGE_ADDED is protected
+ 
+             final String action = intent.getAction();
++
++            if (Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE.equals(action)) {
++                int[] uids = intent.getIntArrayExtra(Intent.EXTRA_CHANGED_UID_LIST);
++                if (uids != null) {
++                    synchronized (mUidRulesFirstLock) {
++                        for (int changedUid : uids) {
++                            mInternetPermissionMap.delete(changedUid);
++                            updateRestrictionRulesForUidUL(changedUid);
++                        }
++                    }
++                }
++                return;
++            }
++
+             final int uid = intent.getIntExtra(EXTRA_UID, -1);
+             if (uid == -1) return;
+ 
